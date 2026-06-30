@@ -1,0 +1,33 @@
+{
+  "name": "plumber",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A secure web terminal with PTY-backed WebSocket sessions.",
+  "scripts": {
+    "build": "vite build --config web/vite.config.js",
+    "start": "node server/index.js",
+    "dev:server": "node --watch server/index.js",
+    "dev:web": "vite --host 127.0.0.1 --config web/vite.config.js",
+    "check": "npm run build",
+    "smoke": "node scripts/smoke.mjs",
+    "postinstall": "node scripts/fix-node-pty.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "cookie": "^1.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

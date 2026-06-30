@@ -1,0 +1,24 @@
+[Unit]
+Description=Plumber web terminal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=plumber
+Group=plumber
+WorkingDirectory=/opt/plumber
+EnvironmentFile=/etc/plumber.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/plumber
+
+[Install]
+WantedBy=multi-user.target
