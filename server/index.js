@@ -22,6 +22,11 @@ const config = {
   port: Number.parseInt(process.env.PORT || '3000', 10),
   username: process.env.WEBTERM_USERNAME || 'admin',
   password: process.env.WEBTERM_PASSWORD || '',
+  authMode: normalizeAuthMode(process.env.WEBTERM_AUTH_MODE, process.env.WEBTERM_TOTP_SECRET_BASE32),
+  totpSecretBase32: process.env.WEBTERM_TOTP_SECRET_BASE32 || '',
+  totpDigits: readPositiveIntegerEnv('WEBTERM_TOTP_DIGITS', 6),
+  totpPeriodSeconds: readPositiveIntegerEnv('WEBTERM_TOTP_PERIOD_SECONDS', 30),
+  totpWindow: readNonNegativeIntegerEnv('WEBTERM_TOTP_WINDOW', 1),
   sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('base64url'),
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   trustProxy: process.env.TRUST_PROXY === 'true',
@@ -51,9 +56,15 @@ if (!process.env.SESSION_SECRET) {
 }
 
 if (!config.password) {
-  console.warn('[plumber] WEBTERM_PASSWORD is not set. Login is disabled until a password is configured.');
+  if (authRequiresPassword()) {
+    console.warn('[plumber] WEBTERM_PASSWORD is not set. Password login is disabled until a password is configured.');
+  }
 } else if (config.password.length < 16) {
   console.warn('[plumber] WEBTERM_PASSWORD should be at least 16 characters in production.');
+}
+
+if (authRequiresTotp() && !config.totpSecretBase32) {
+  console.warn('[plumber] WEBTERM_TOTP_SECRET_BASE32 is not set. TOTP login is disabled until a secret is configured.');
 }
 
 const SESSION_COOKIE = 'plumber_session';
@@ -112,6 +123,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/auth-config', (_req, res) => {
+  res.json(getPublicAuthConfig());
+});
+
 app.get('/api/me', (req, res) => {
   const session = getSessionFromRequest(req);
   if (!session) {
@@ -127,13 +142,18 @@ app.get('/api/me', (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
-  if (!config.password) {
+  if (authRequiresPassword() && !config.password) {
     res.status(503).json({ error: 'password_not_configured' });
     return;
   }
 
-  const { username, password } = req.body || {};
-  if (typeof username !== 'string' || typeof password !== 'string') {
+  if (authRequiresTotp() && !config.totpSecretBase32) {
+    res.status(503).json({ error: 'totp_not_configured' });
+    return;
+  }
+
+  const { username, password, totpCode } = req.body || {};
+  if (typeof username !== 'string') {
     res.status(400).json({ error: 'invalid_request' });
     return;
   }
@@ -146,7 +166,7 @@ app.post('/api/login', (req, res) => {
     return;
   }
 
-  if (username !== config.username || !secureCompare(password, config.password)) {
+  if (username !== config.username || !validateLoginCredentials({ password, totpCode })) {
     recordFailedLogin(loginKey);
     res.status(401).json({ error: 'invalid_credentials' });
     return;
@@ -462,6 +482,92 @@ function secureCompare(actual, expected) {
   return crypto.timingSafeEqual(actualDigest, expectedDigest);
 }
 
+function validateLoginCredentials({ password, totpCode }) {
+  if (authRequiresPassword() && (typeof password !== 'string' || !secureCompare(password, config.password))) {
+    return false;
+  }
+
+  if (authRequiresTotp() && (typeof totpCode !== 'string' || !verifyTotpCode(totpCode))) {
+    return false;
+  }
+
+  return true;
+}
+
+function getPublicAuthConfig() {
+  return {
+    authMode: config.authMode,
+    requiresPassword: authRequiresPassword(),
+    requiresTotp: authRequiresTotp(),
+    totpDigits: config.totpDigits,
+    totpPeriodSeconds: config.totpPeriodSeconds,
+  };
+}
+
+function authRequiresPassword() {
+  return config.authMode === 'password' || config.authMode === 'password_totp';
+}
+
+function authRequiresTotp() {
+  return config.authMode === 'totp' || config.authMode === 'password_totp';
+}
+
+function verifyTotpCode(code) {
+  const normalizedCode = String(code).replace(/\s+/g, '');
+  if (!new RegExp(`^\\d{${config.totpDigits}}$`).test(normalizedCode)) {
+    return false;
+  }
+
+  const secret = decodeBase32(config.totpSecretBase32);
+  if (!secret) {
+    return false;
+  }
+
+  const nowCounter = Math.floor(Date.now() / 1000 / config.totpPeriodSeconds);
+  for (let offset = -config.totpWindow; offset <= config.totpWindow; offset += 1) {
+    const expected = generateTotp(secret, nowCounter + offset, config.totpDigits);
+    if (safeEqual(normalizedCode, expected)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function generateTotp(secret, counter, digits) {
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigUInt64BE(BigInt(counter));
+  const digest = crypto.createHmac('sha1', secret).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary =
+    ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  const token = binary % 10 ** digits;
+  return String(token).padStart(digits, '0');
+}
+
+function decodeBase32(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const normalized = String(value).toUpperCase().replace(/[\s=-]/g, '');
+  if (!normalized || /[^A-Z2-7]/.test(normalized)) {
+    return null;
+  }
+
+  let bits = '';
+  for (const char of normalized) {
+    bits += alphabet.indexOf(char).toString(2).padStart(5, '0');
+  }
+
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  }
+
+  return Buffer.from(bytes);
+}
+
 function safeEqual(actual, expected) {
   const actualBuffer = Buffer.from(actual);
   const expectedBuffer = Buffer.from(expected);
@@ -672,6 +778,35 @@ function readPositiveIntegerEnv(name, fallback) {
   }
 
   return value;
+}
+
+function readNonNegativeIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 0) {
+    console.warn(`[plumber] ${name}=${raw} is invalid; using ${fallback}`);
+    return fallback;
+  }
+
+  return value;
+}
+
+function normalizeAuthMode(value, totpSecretBase32) {
+  if (!value) {
+    return totpSecretBase32 ? 'password_totp' : 'password';
+  }
+
+  const normalized = String(value).toLowerCase().replace(/[-\s]/g, '_');
+  if (['password', 'password_totp', 'totp'].includes(normalized)) {
+    return normalized;
+  }
+
+  console.warn(`[plumber] WEBTERM_AUTH_MODE=${value} is invalid; using password`);
+  return 'password';
 }
 
 function shutdown(signal) {

@@ -45,7 +45,12 @@ Important environment variables:
 | Name | Default | Notes |
 | --- | --- | --- |
 | `WEBTERM_USERNAME` | `admin` | Single local account for this first version. |
+| `WEBTERM_AUTH_MODE` | `password` | `password`, `password_totp`, or `totp`. |
 | `WEBTERM_PASSWORD` | empty | Required before login works. Use a long random value. |
+| `WEBTERM_TOTP_SECRET_BASE32` | empty | Authenticator app shared secret. Required for TOTP modes. |
+| `WEBTERM_TOTP_DIGITS` | `6` | Authenticator code length. Keep `6` for normal apps. |
+| `WEBTERM_TOTP_PERIOD_SECONDS` | `30` | Authenticator code rotation period. Keep `30` for normal apps. |
+| `WEBTERM_TOTP_WINDOW` | `1` | Accepts one previous/current/next code window to tolerate clock skew. |
 | `SESSION_SECRET` | random on boot | Required in production so sessions survive restarts. |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS. Enables secure cookies and HSTS. |
 | `TRUST_PROXY` | `false` | Set `true` behind Nginx/Caddy/load balancer. |
@@ -60,6 +65,39 @@ Important environment variables:
 | `TERMINAL_IDLE_TIMEOUT_MS` | `1800000` | Closes sessions after no terminal activity. |
 | `TERMINAL_MAX_SESSION_MS` | `28800000` | Absolute max lifetime for a PTY session. |
 | `MAX_INPUT_BYTES` | `65536` | Max bytes for a single terminal input message. |
+
+## Authenticator Codes
+
+Plumber supports TOTP codes from apps such as Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, and iCloud Passwords.
+
+Generate a new TOTP secret:
+
+```bash
+npm run totp:generate
+```
+
+The command prints:
+
+- A Base32 secret you can paste into an authenticator app manually.
+- An `otpauth://` URI that many password managers can import.
+- Recommended `.env` lines.
+
+Recommended production mode is password plus authenticator code:
+
+```bash
+WEBTERM_AUTH_MODE=password_totp
+WEBTERM_PASSWORD=use-a-long-random-password
+WEBTERM_TOTP_SECRET_BASE32=PASTE_GENERATED_SECRET_HERE
+```
+
+If you really want the login form to use only the authenticator code:
+
+```bash
+WEBTERM_AUTH_MODE=totp
+WEBTERM_TOTP_SECRET_BASE32=PASTE_GENERATED_SECRET_HERE
+```
+
+`totp` mode is convenient, but `password_totp` is safer because it keeps two independent factors.
 
 ## Running TUI AI Tools Through SSH
 

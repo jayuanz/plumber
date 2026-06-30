@@ -19,14 +19,14 @@ renderShell();
 void bootstrap();
 
 async function bootstrap() {
-  const user = await fetchMe();
+  const [user, authConfig] = await Promise.all([fetchMe(), fetchAuthConfig()]);
   if (user?.authenticated) {
     renderTerminal(user);
     await connectTerminal();
     return;
   }
 
-  renderLogin();
+  renderLogin(authConfig);
 }
 
 function renderShell() {
@@ -63,9 +63,20 @@ function renderShell() {
             <span>Username</span>
             <input name="username" autocomplete="username" required value="admin" />
           </label>
-          <label>
+          <label data-password-field>
             <span>Password</span>
             <input name="password" type="password" autocomplete="current-password" required autofocus />
+          </label>
+          <label data-totp-field hidden>
+            <span>Authenticator code</span>
+            <input
+              name="totpCode"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="8"
+              placeholder="6-digit code"
+            />
           </label>
           <p class="form-error" data-login-error hidden></p>
           <button class="primary-button" type="submit">Sign in</button>
@@ -82,10 +93,30 @@ function renderShell() {
   app.querySelector('[data-action="logout"]').addEventListener('click', logout);
 }
 
-function renderLogin() {
+function renderLogin(authConfig = defaultAuthConfig()) {
   showView('login');
   const form = app.querySelector('[data-login-form]');
   const error = app.querySelector('[data-login-error]');
+  const passwordField = app.querySelector('[data-password-field]');
+  const passwordInput = form.elements.password;
+  const totpField = app.querySelector('[data-totp-field]');
+  const totpInput = form.elements.totpCode;
+
+  passwordField.hidden = !authConfig.requiresPassword;
+  passwordInput.required = authConfig.requiresPassword;
+  passwordInput.disabled = !authConfig.requiresPassword;
+  totpField.hidden = !authConfig.requiresTotp;
+  totpInput.required = authConfig.requiresTotp;
+  totpInput.disabled = !authConfig.requiresTotp;
+  totpInput.maxLength = authConfig.totpDigits || 6;
+  totpInput.placeholder = `${authConfig.totpDigits || 6}-digit code`;
+
+  if (!authConfig.requiresPassword && authConfig.requiresTotp) {
+    totpInput.autofocus = true;
+    totpInput.focus();
+  } else {
+    passwordInput.focus();
+  }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -97,7 +128,8 @@ function renderLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username: formData.get('username'),
-        password: formData.get('password'),
+        password: authConfig.requiresPassword ? formData.get('password') : undefined,
+        totpCode: authConfig.requiresTotp ? formData.get('totpCode') : undefined,
       }),
     });
 
@@ -315,7 +347,7 @@ async function logout() {
   socket = null;
   resizeObserver = null;
   renderShell();
-  renderLogin();
+  renderLogin(await fetchAuthConfig());
 }
 
 async function fetchMe() {
@@ -324,6 +356,25 @@ async function fetchMe() {
     return null;
   }
   return response.json();
+}
+
+async function fetchAuthConfig() {
+  const response = await fetch('/api/auth-config');
+  if (!response.ok) {
+    return defaultAuthConfig();
+  }
+
+  return response.json();
+}
+
+function defaultAuthConfig() {
+  return {
+    authMode: 'password',
+    requiresPassword: true,
+    requiresTotp: false,
+    totpDigits: 6,
+    totpPeriodSeconds: 30,
+  };
 }
 
 function showView(name) {
@@ -364,9 +415,17 @@ function loginErrorText(error) {
     return 'Server password is not configured.';
   }
 
+  if (error === 'totp_not_configured') {
+    return 'Authenticator secret is not configured.';
+  }
+
   if (error === 'origin_not_allowed') {
     return 'Request origin is not allowed.';
   }
 
-  return 'Invalid username or password.';
+  if (error === 'too_many_attempts') {
+    return 'Too many failed attempts. Try again later.';
+  }
+
+  return 'Invalid username, password, or authenticator code.';
 }
