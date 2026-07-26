@@ -10,6 +10,8 @@
     "dev:server": "node --watch server/index.js",
     "dev:web": "vite --host 127.0.0.1 --config web/vite.config.js",
     "check": "npm run build",
+    "release:obfuscated": "node scripts/build-release.mjs",
+    "release:linux": "bash scripts/build-release-linux.sh",
     "smoke": "node scripts/smoke.mjs",
     "totp:generate": "node scripts/generate-totp-secret.mjs",
     "postinstall": "node scripts/fix-node-pty.mjs"
@@ -26,6 +28,9 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.1",
+    "javascript-obfuscator": "^5.4.3",
+    "postject": "^1.0.0-alpha.6",
     "vite": "^6.0.7"
   },
   "engines": {

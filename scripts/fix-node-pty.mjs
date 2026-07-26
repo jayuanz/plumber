@@ -14,6 +14,8 @@ const candidates = [
   path.join(nodePtyRoot, 'build', 'Release', 'spawn-helper'),
   path.join(nodePtyRoot, 'prebuilds', 'darwin-arm64', 'spawn-helper'),
   path.join(nodePtyRoot, 'prebuilds', 'darwin-x64', 'spawn-helper'),
+  path.join(nodePtyRoot, 'prebuilds', 'linux-x64', 'spawn-helper'),
+  path.join(nodePtyRoot, 'prebuilds', 'linux-arm64', 'spawn-helper'),
 ];
 
 let fixed = 0;

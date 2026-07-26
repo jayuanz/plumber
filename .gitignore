@@ -1,6 +1,8 @@
 .DS_Store
 node_modules/
 web/dist/
+release/
+.release-build/
 .env
 *.log
 npm-debug.log*

@@ -12,10 +12,12 @@ import helmet from 'helmet';
 import pty from 'node-pty';
 import { WebSocketServer } from 'ws';
 
-dotenv.config();
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const clientDist = path.resolve(__dirname, '../web/dist');
+const releaseRoot = process.env.PLUMBER_RELEASE_ROOT ? path.resolve(process.env.PLUMBER_RELEASE_ROOT) : '';
+const projectRoot = path.resolve(__dirname, '..');
+const clientDist = releaseRoot ? path.join(releaseRoot, 'web/dist') : path.resolve(__dirname, '../web/dist');
+
+loadRuntimeEnv();
 
 const config = {
   host: process.env.HOST || '127.0.0.1',
@@ -48,6 +50,17 @@ const config = {
   terminalMaxSessionMs: readPositiveIntegerEnv('TERMINAL_MAX_SESSION_MS', 8 * 60 * 60 * 1000),
   maxInputBytes: readPositiveIntegerEnv('MAX_INPUT_BYTES', 64 * 1024),
 };
+
+function loadRuntimeEnv() {
+  const envFile = process.env.PLUMBER_ENV_FILE
+    ? path.resolve(process.env.PLUMBER_ENV_FILE)
+    : path.join(releaseRoot || projectRoot, '.env');
+  const result = dotenv.config({ path: envFile });
+
+  if (result.error && result.error.code !== 'ENOENT') {
+    console.warn(`[plumber] Could not load env file at ${envFile}: ${result.error.message}`);
+  }
+}
 
 if (!process.env.SESSION_SECRET) {
   console.warn('[plumber] SESSION_SECRET is not set. Existing sessions will be invalid after restart.');

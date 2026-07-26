@@ -38,6 +38,8 @@ npm start
 
 Open `http://127.0.0.1:3000`.
 
+Plumber loads `.env` from the project or release directory automatically. To use a different file, start with `PLUMBER_ENV_FILE=/path/to/plumber.env npm start`. A Python-style `.venv` directory is not loaded by npm; activate it separately before starting if you need one for other tools.
+
 ## Configuration
 
 Important environment variables:
@@ -199,6 +201,69 @@ sudo cp deploy/plumber.service /etc/systemd/system/plumber.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now plumber
 ```
+
+## Obfuscated Executable Release
+
+Build a local obfuscated release package:
+
+```bash
+npm run release:obfuscated
+```
+
+On macOS arm64 this creates:
+
+```text
+release/plumber-macos-arm64/
+├── plumber          # executable launcher
+├── app/server.mjs   # obfuscated server bundle
+├── app/node_modules # native node-pty sidecar
+└── web/dist         # obfuscated frontend assets
+```
+
+Run it:
+
+```bash
+cd release/plumber-macos-arm64
+WEBTERM_PASSWORD=change-this-long-random-password \
+SESSION_SECRET=change-this-to-at-least-32-random-bytes \
+HOST=127.0.0.1 \
+PORT=3000 \
+./plumber
+```
+
+The executable is generated with Node SEA, but Plumber still ships `app/` as a sidecar because `node-pty` is a native addon and must be loaded from disk. Keep the whole release directory together when copying it to another machine.
+
+### Linux build
+
+The `plumber-linux-x64/` layout mirrors the macOS one (`plumber` executable, `app/server.mjs`, `app/node_modules`, `web/dist`).
+
+Recommended: build in a container so the binary is reproducible and links against an older glibc baseline (Debian bullseye, glibc 2.31) for broad distro compatibility. This works from any host with Docker, including macOS:
+
+```bash
+npm run release:linux
+# output: release/plumber-linux-x64/
+```
+
+Alternatively, build natively on a Linux machine. `node-pty` compiles from source on install, so the build host needs a C/C++ toolchain first:
+
+```bash
+sudo apt-get install -y python3 build-essential
+npm ci
+npm run release:obfuscated   # produces release/plumber-linux-x64/
+```
+
+Run it on the target Linux host:
+
+```bash
+cd plumber-linux-x64
+WEBTERM_PASSWORD=change-this-long-random-password \
+SESSION_SECRET=change-this-to-at-least-32-random-bytes \
+HOST=127.0.0.1 \
+PORT=3000 \
+./plumber
+```
+
+A native build links against the build host's glibc, so a binary built on a newer distribution may not run on an older one. Prefer `npm run release:linux` (or a CI runner with an old glibc) when you need to distribute widely.
 
 ## Security Notes
 

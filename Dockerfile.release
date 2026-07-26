@@ -1,0 +1,24 @@
+# Reproducible, portable Linux build for the obfuscated Plumber release.
+#
+# Built on Debian bullseye (glibc 2.31) so the resulting executable, the copied
+# node binary, and the compiled node-pty addon run on a broad range of Linux
+# distributions rather than only on the latest glibc.
+FROM node:20-bullseye
+
+# node-pty compiles from source during `npm ci`; it needs python3 + a C/C++ toolchain.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install dependencies first so the layer caches across source-only changes.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Bring in the rest of the project and produce the obfuscated release.
+COPY . .
+RUN npm run release:obfuscated
+
+# On `docker run`, copy the produced release tree to the mounted output dir.
+CMD ["sh", "-c", "cp -a release/. /out/"]
