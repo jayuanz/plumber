@@ -158,6 +158,10 @@ function renderTerminal(user) {
       fontSize: 14,
       lineHeight: 1.2,
       macOptionIsMeta: true,
+      // On macOS, Option(⌥) + click-drag forces a selection even when the
+      // active program (e.g. tmux with `set -g mouse on`) has grabbed mouse
+      // reporting, so the selection reaches the browser clipboard.
+      macOptionClickForcesSelection: true,
       minimumContrastRatio: 1,
       scrollback: 10000,
       theme: {
