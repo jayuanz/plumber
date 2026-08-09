@@ -136,6 +136,37 @@ export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 ```
 
+### Copy & paste
+
+| Action | Shortcut |
+| --- | --- |
+| Copy selection | `⌘C` (mac) / `Ctrl+Shift+C` (others) |
+| Paste from clipboard | `⌘V` (mac) / `Ctrl+Shift+V` (others) |
+| Force-select when the program grabbed the mouse (e.g. `tmux` with `set -g mouse on`) | `Option`+drag (mac) / `Shift`+drag |
+
+**Copying from a remote `tmux` over SSH.** Text that lives inside the remote
+`tmux` (copy-mode, other panes, scrollback that has scrolled off the Plumber
+viewport) is not part of the local terminal buffer, so the selection shortcuts
+above can't reach it. Plumber bridges this with the **OSC 52** escape sequence:
+when the remote `tmux` copies, it emits OSC 52, which Plumber writes to your
+local clipboard. Tell the remote `tmux` to emit it:
+
+```bash
+# ~/.tmux.conf on the remote host
+set -s set-clipboard on            # tmux 3.2+ (older releases: set -g set-clipboard on)
+set -ag terminal-features ',*:clipboard'
+```
+
+Then copy as usual inside `tmux` (e.g. `prefix` + `[` to enter copy-mode, select,
+`Enter`) and the text lands in your local clipboard.
+
+> **HTTPS required.** Clipboard access needs a *secure context* — HTTPS or
+> `localhost`. Plumber itself serves HTTP, so access it through the TLS
+> terminating reverse proxy (see [Production Deployment](#production-deployment))
+> or over an SSH tunnel to `127.0.0.1`. Over plain `http://<host>` the
+> OSC 52 copy and paste paths silently no-op (visible-text copy still works via a
+> legacy fallback).
+
 ## Production Deployment
 
 Run Plumber behind a TLS-terminating reverse proxy such as Nginx, Caddy, or a cloud load balancer. In production set:
