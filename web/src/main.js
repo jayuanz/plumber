@@ -1,4 +1,5 @@
 import { Terminal } from '@xterm/xterm';
+import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
@@ -190,7 +191,11 @@ function renderTerminal(user) {
     fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
+    // Honor OSC 52 so a remote program (e.g. tmux copy-mode over SSH) can write
+    // to / read from the local clipboard through the browser.
+    terminal.loadAddon(new ClipboardAddon());
     terminal.open(app.querySelector('[data-terminal-host]'));
+    bindClipboardShortcuts(terminal);
     terminal.focus();
 
     resizeObserver = new ResizeObserver(() => {
@@ -294,6 +299,69 @@ function bindTerminalInput() {
 function unbindTerminalInput() {
   disposeTerminalInput?.dispose();
   disposeTerminalInput = null;
+}
+
+function bindClipboardShortcuts(term) {
+  // Map the host's copy/paste shortcuts onto the terminal selection / PTY, so
+  // they work even though xterm.js renders into a non-text canvas-like surface.
+  term.attachCustomKeyEventHandler((event) => {
+    if (event.type !== 'keydown') {
+      return true;
+    }
+
+    // ⌘ on macOS, Ctrl+Shift on Windows/Linux.
+    const modifier = event.metaKey || (event.ctrlKey && event.shiftKey);
+
+    if (modifier && event.key === 'c' && term.hasSelection()) {
+      copyToClipboard(term.getSelection());
+      return false; // don't also forward ^C to the shell
+    }
+
+    if (modifier && event.key === 'v') {
+      pasteFromClipboard(term);
+      return false; // don't let the browser paste into the helper textarea
+    }
+
+    return true;
+  });
+}
+
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall through to the legacy path.
+  }
+
+  // Legacy fallback for non-secure (plain-HTTP) contexts, where
+  // navigator.clipboard is unavailable. Only covers visible-text copy.
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } catch {
+    // Ignore; nothing else we can do without a secure context.
+  }
+  textarea.remove();
+}
+
+async function pasteFromClipboard(term) {
+  let text = '';
+  try {
+    text = (await navigator.clipboard?.readText?.()) ?? '';
+  } catch {
+    text = '';
+  }
+  if (text) {
+    term.paste(text);
+  }
 }
 
 function sendResize() {
