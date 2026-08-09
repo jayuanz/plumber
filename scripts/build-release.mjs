@@ -79,10 +79,12 @@ await fixNodePtyHelperMode(path.join(nodeModulesDir, 'node-pty'));
 await writeReleaseReadme();
 await writeSeaLauncher();
 await buildSeaExecutable();
+const tarball = await createTarball();
 
 console.log('');
 console.log(`Obfuscated executable release created: ${path.relative(root, releaseDir)}`);
 console.log(`Run it with: ${path.relative(root, path.join(releaseDir, 'plumber'))}`);
+console.log(`Tarball: ${path.relative(root, tarball)}`);
 
 async function obfuscateJavaScriptFiles(directory, target) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -245,6 +247,15 @@ async function buildSeaExecutable() {
   if (process.platform === 'darwin') {
     runOptional('codesign', ['--sign', '-', executablePath]);
   }
+}
+
+async function createTarball() {
+  // Reuse the release dir name so the tarball always matches the build target,
+  // e.g. release/plumber-linux-x64.tar.gz or release/plumber-macos-arm64.tar.gz.
+  const dirName = path.basename(releaseDir);
+  const tarball = path.join(releaseRoot, `${dirName}.tar.gz`);
+  run('tar', ['-czf', tarball, '-C', releaseRoot, dirName]);
+  return tarball;
 }
 
 function run(command, args) {

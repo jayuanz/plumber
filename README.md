@@ -220,6 +220,8 @@ release/plumber-macos-arm64/
 └── web/dist         # obfuscated frontend assets
 ```
 
+Both `release:obfuscated` and `release:linux` also write a portable `plumber-<platform>-<arch>.tar.gz` tarball alongside the directory (e.g. `release/plumber-macos-arm64.tar.gz`, `release/plumber-linux-x64.tar.gz`), so the release can be copied to the target host as a single file.
+
 Run it:
 
 ```bash
@@ -241,7 +243,7 @@ Recommended: build in a container so the binary is reproducible and links agains
 
 ```bash
 npm run release:linux
-# output: release/plumber-linux-x64/
+# output: release/plumber-linux-x64/ and release/plumber-linux-x64.tar.gz
 ```
 
 Alternatively, build natively on a Linux machine. `node-pty` compiles from source on install, so the build host needs a C/C++ toolchain first:
