@@ -14,6 +14,7 @@ WORKDIR /app
 
 # Install dependencies first so the layer caches across source-only changes.
 COPY package.json package-lock.json ./
+COPY scripts/fix-node-pty.mjs scripts/fix-node-pty.mjs
 RUN npm ci
 
 # Bring in the rest of the project and produce the obfuscated release.
