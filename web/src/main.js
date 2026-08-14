@@ -309,10 +309,13 @@ function bindClipboardShortcuts(term) {
       return true;
     }
 
-    // ⌘ on macOS, Ctrl+Shift on Windows/Linux.
+    // Paste: ⌘ on macOS, Ctrl+Shift on Windows/Linux.
     const modifier = event.metaKey || (event.ctrlKey && event.shiftKey);
 
-    if (modifier && event.key === 'c' && term.hasSelection()) {
+    // Copy: ⌘ on macOS, Ctrl(+Shift)+C on Windows/Linux. The browser intercepts
+    // Ctrl+Shift+C (DevTools) on Windows/Linux, so a plain Ctrl+C must also copy
+    // the selection instead of forwarding ^C (SIGINT) when text is selected (#7).
+    if (event.key === 'c' && term.hasSelection() && (event.metaKey || event.ctrlKey)) {
       copyToClipboard(term.getSelection());
       return false; // don't also forward ^C to the shell
     }
