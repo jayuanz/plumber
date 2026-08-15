@@ -94,10 +94,14 @@ function renderShell() {
   app.querySelector('[data-action="logout"]').addEventListener('click', logout);
 }
 
-function renderLogin(authConfig = defaultAuthConfig()) {
+function renderLogin(authConfig = defaultAuthConfig(), notice = '') {
   showView('login');
   const form = app.querySelector('[data-login-form]');
   const error = app.querySelector('[data-login-error]');
+  if (notice) {
+    error.textContent = notice;
+    error.hidden = false;
+  }
   const passwordField = app.querySelector('[data-password-field]');
   const passwordInput = form.elements.password;
   const totpField = app.querySelector('[data-totp-field]');
@@ -212,9 +216,16 @@ async function connectTerminal() {
   setStatus('connecting', 'Connecting');
 
   const ticketResponse = await fetch('/api/terminal-ticket', { method: 'POST' });
+  if (ticketResponse.status === 401) {
+    // The session expired (or was signed out elsewhere). Fall back to the login
+    // view so the user can re-authenticate instead of being stranded on a dead
+    // terminal where Reconnect can never succeed (#9).
+    await returnToLogin('Your session expired. Please sign in again.');
+    return;
+  }
   if (!ticketResponse.ok) {
     setStatus('disconnected', 'Unauthorized');
-    terminal?.writeln('\r\n\x1b[31mUnable to create terminal ticket. Please sign in again.\x1b[0m');
+    terminal?.writeln('\r\n\x1b[31mUnable to create terminal ticket. Please try again.\x1b[0m');
     return;
   }
 
@@ -415,14 +426,27 @@ async function logout() {
   reconnectRequested = true;
   socket?.close();
   await fetch('/api/logout', { method: 'POST' });
+  await returnToLogin();
+}
+
+// Tear down the terminal view and show the login form again. Re-renders the
+// shell first so the login form is fresh — renderLogin() attaches its submit
+// listener to the form element, so reusing the old DOM would stack listeners.
+async function returnToLogin(notice = '') {
+  stopHeartbeat();
+  unbindTerminalInput();
+  // Suppress the stale socket's close handler (it would write into the
+  // terminal we're about to dispose).
+  reconnectRequested = true;
+  socket?.close();
+  socket = null;
   terminal?.dispose();
   resizeObserver?.disconnect();
   terminal = null;
   fitAddon = null;
-  socket = null;
   resizeObserver = null;
   renderShell();
-  renderLogin(await fetchAuthConfig());
+  renderLogin(await fetchAuthConfig(), notice);
 }
 
 async function fetchMe() {
