@@ -327,13 +327,23 @@ function bindClipboardShortcuts(term) {
     // Ctrl+Shift+C (DevTools) on Windows/Linux, so a plain Ctrl+C must also copy
     // the selection instead of forwarding ^C (SIGINT) when text is selected (#7).
     if (event.key === 'c' && term.hasSelection() && (event.metaKey || event.ctrlKey)) {
+      // Same as paste below: returning false alone doesn't cancel the browser's
+      // default action, so the native copy event would reach xterm's own copy
+      // listener and write the selection to the clipboard a second time.
+      event.preventDefault();
       copyToClipboard(term.getSelection());
       return false; // don't also forward ^C to the shell
     }
 
     if (modifier && event.key === 'v') {
+      // Returning false only stops xterm's own keydown processing; it does NOT
+      // cancel the browser's default action. Without preventDefault() the
+      // native paste still fires on the helper textarea and xterm's own paste
+      // listener sends the text to the PTY a second time, so everything got
+      // pasted twice.
+      event.preventDefault();
       pasteFromClipboard(term);
-      return false; // don't let the browser paste into the helper textarea
+      return false;
     }
 
     return true;
