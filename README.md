@@ -160,12 +160,13 @@ set -ag terminal-features ',*:clipboard'
 Then copy as usual inside `tmux` (e.g. `prefix` + `[` to enter copy-mode, select,
 `Enter`) and the text lands in your local clipboard.
 
-> **HTTPS required.** Clipboard access needs a *secure context* — HTTPS or
-> `localhost`. Plumber itself serves HTTP, so access it through the TLS
+> **OSC 52 needs HTTPS.** The OSC 52 bridge uses `navigator.clipboard`, which
+> requires a *secure context* — HTTPS or `localhost`. Plumber itself serves
+> HTTP, so for OSC 52 copy from a remote `tmux`, access it through the TLS
 > terminating reverse proxy (see [Production Deployment](#production-deployment))
-> or over an SSH tunnel to `127.0.0.1`. Over plain `http://<host>` the
-> OSC 52 copy and paste paths silently no-op (visible-text copy still works via a
-> legacy fallback).
+> or over an SSH tunnel to `127.0.0.1`. The direct shortcuts keep working on
+> plain HTTP too: paste rides the browser's native paste event, and selection
+> copy falls back to a legacy path.
 
 ## Production Deployment
 
