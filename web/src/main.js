@@ -313,37 +313,30 @@ function unbindTerminalInput() {
 }
 
 function bindClipboardShortcuts(term) {
-  // Map the host's copy/paste shortcuts onto the terminal selection / PTY, so
-  // they work even though xterm.js renders into a non-text canvas-like surface.
+  // Map the host's copy shortcut onto the terminal selection: xterm.js renders
+  // into a canvas-like surface the browser can't copy from on its own. Paste
+  // needs no interception — xterm's own paste listener receives the browser's
+  // native paste event on its helper textarea and forwards the text to the
+  // PTY. That path works on plain HTTP and in browsers where
+  // navigator.clipboard reads are blocked or prompt, so intercepting ⌘V to
+  // read the clipboard manually made paste silently fail in exactly those
+  // places (and preventDefault() had already killed the native paste).
   term.attachCustomKeyEventHandler((event) => {
     if (event.type !== 'keydown') {
       return true;
     }
 
-    // Paste: ⌘ on macOS, Ctrl+Shift on Windows/Linux.
-    const modifier = event.metaKey || (event.ctrlKey && event.shiftKey);
-
     // Copy: ⌘ on macOS, Ctrl(+Shift)+C on Windows/Linux. The browser intercepts
     // Ctrl+Shift+C (DevTools) on Windows/Linux, so a plain Ctrl+C must also copy
     // the selection instead of forwarding ^C (SIGINT) when text is selected (#7).
     if (event.key === 'c' && term.hasSelection() && (event.metaKey || event.ctrlKey)) {
-      // Same as paste below: returning false alone doesn't cancel the browser's
-      // default action, so the native copy event would reach xterm's own copy
-      // listener and write the selection to the clipboard a second time.
+      // Returning false only stops xterm's own keydown processing; it does NOT
+      // cancel the browser's default action, so the native copy event would
+      // still reach xterm's own copy listener and write the selection to the
+      // clipboard a second time.
       event.preventDefault();
       copyToClipboard(term.getSelection());
       return false; // don't also forward ^C to the shell
-    }
-
-    if (modifier && event.key === 'v') {
-      // Returning false only stops xterm's own keydown processing; it does NOT
-      // cancel the browser's default action. Without preventDefault() the
-      // native paste still fires on the helper textarea and xterm's own paste
-      // listener sends the text to the PTY a second time, so everything got
-      // pasted twice.
-      event.preventDefault();
-      pasteFromClipboard(term);
-      return false;
     }
 
     return true;
@@ -374,18 +367,6 @@ async function copyToClipboard(text) {
     // Ignore; nothing else we can do without a secure context.
   }
   textarea.remove();
-}
-
-async function pasteFromClipboard(term) {
-  let text = '';
-  try {
-    text = (await navigator.clipboard?.readText?.()) ?? '';
-  } catch {
-    text = '';
-  }
-  if (text) {
-    term.paste(text);
-  }
 }
 
 function sendResize() {
