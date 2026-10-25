@@ -266,6 +266,49 @@ PORT=3000 \
 
 The executable is generated with Node SEA, but Plumber still ships `app/` as a sidecar because `node-pty` is a native addon and must be loaded from disk. Keep the whole release directory together when copying it to another machine.
 
+### macOS command-line build
+
+Build a portable executable on a Mac with Node.js/npm and the Xcode Command
+Line Tools installed. This does not create an installer or modify system files:
+
+```bash
+npm run release:macos
+# Apple Silicon: release/plumber-macos-arm64/plumber
+# Intel:         release/plumber-macos-x64/plumber
+```
+
+This downloads a pinned, SHA-256-verified official Node.js runtime and installs
+dependencies from the lockfile before building. It avoids bundling a Homebrew
+Node.js executable that depends on libraries unavailable on another Mac. The
+build requires network access on its first run and targets the build machine's
+architecture. It also produces `plumber-macos-<arch>.tar.gz` and a `.tar.gz.sha256`
+checksum file. The target Mac does not need Node.js or Homebrew.
+
+Start manually with your chosen web login credentials:
+
+```bash
+cd release/plumber-macos-arm64
+WEBTERM_USERNAME=local \
+WEBTERM_PASSWORD='replace-with-your-own-long-password' \
+SESSION_SECRET="$(openssl rand -hex 32)" \
+./plumber
+```
+
+Open `http://127.0.0.1:3000` and log in with the username and password you set.
+These are application credentials, not macOS system accounts. Terminal sessions
+run as the current user; do not start the executable with `sudo`. Press Control-C
+to stop. Nothing starts automatically or creates accounts on your Mac.
+
+For persistent configuration, copy the included `.env.example` to `.env`, run
+`chmod 600 .env`, and edit your username, password, and session secret before
+running `./plumber`. The executable reads `.env` next to itself, not from
+`~/Library/Application Support`. `PLUMBER_ENV_FILE` can select another file.
+
+Keep `app/` and `web/` beside the executable when moving it; the release is not
+a single self-contained file. These local binaries are ad-hoc signed, not
+Developer ID signed or notarized, so macOS may require approval for the specific
+executable under Privacy & Security. Do not disable Gatekeeper globally.
+
 ### Linux build
 
 The `plumber-linux-x64/` layout mirrors the macOS one (`plumber` executable, `app/server.mjs`, `app/node_modules`, `web/dist`).

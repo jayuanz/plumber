@@ -36,6 +36,8 @@ const obfuscatorBaseOptions = {
   stringArrayThreshold: 0.72,
 };
 
+await assertSeaSupport();
+
 await fs.rm(buildDir, { recursive: true, force: true });
 await fs.rm(releaseDir, { recursive: true, force: true });
 await fs.mkdir(buildDir, { recursive: true });
@@ -76,6 +78,7 @@ await copyRuntimeNativeModule('node-addon-api');
 await assertNodePtyNativeBinary(path.join(nodeModulesDir, 'node-pty'));
 await fixNodePtyHelperMode(path.join(nodeModulesDir, 'node-pty'));
 
+await fs.copyFile(path.join(root, '.env.example'), path.join(releaseDir, '.env.example'));
 await writeReleaseReadme();
 await writeSeaLauncher();
 await buildSeaExecutable();
@@ -162,15 +165,29 @@ async function writeReleaseReadme() {
 
 This directory contains an obfuscated Plumber release for ${platformName}/${process.arch}.
 
-Run:
+No installation or external Node.js runtime is required. Keep the executable
+and its sidecar \`app/\` and \`web/\` directories together because Plumber uses
+the native \`node-pty\` addon.
+
+Before starting, copy the configuration template and set your own long random
+\`WEBTERM_PASSWORD\` and \`SESSION_SECRET\` values (at least 32 characters for
+the session secret):
 
 \`\`\`bash
+cp .env.example .env
+chmod 600 .env
+# Edit .env before starting.
 ./plumber
 \`\`\`
 
-The executable expects the sidecar \`app/\` and \`web/\` directories to stay next to it. This is required because Plumber uses the native \`node-pty\` addon.
+Open http://127.0.0.1:3000 in a browser. Use \`WEBTERM_USERNAME\` (default:
+\`admin\`) and \`WEBTERM_PASSWORD\` from your configuration to log in. This is
+an application login, not a macOS/Linux system account; terminal sessions run
+as the user who starts Plumber. Press Control-C to stop.
 
-Set production configuration through environment variables or a local \`.env\` file in this directory, for example:
+Alternatively, configure the executable through environment variables. A local
+\`.env\` file is loaded from this release directory; \`PLUMBER_ENV_FILE\` can
+select a different file. Example configuration (replace the password):
 
 \`\`\`bash
 WEBTERM_USERNAME=admin
@@ -201,6 +218,39 @@ import(pathToFileURL(serverPath).href).catch((error) => {
 `;
 
   await fs.writeFile(path.join(buildDir, 'sea-launcher.cjs'), launcher);
+}
+
+async function assertSeaSupport() {
+  // Probe that the running Node.js can build single executables BEFORE the
+  // destructive steps. Some builds — Homebrew's node 26.12.0, observed Oct 2026
+  // — ship with SEA support disabled, which otherwise only surfaces as a
+  // cryptic "Single executable application is disabled." mid-build, after the
+  // previous release output has already been wiped.
+  const probeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plumber-sea-probe-'));
+  try {
+    await fs.writeFile(path.join(probeDir, 'main.cjs'), 'void 0;\n');
+    await fs.writeFile(
+      path.join(probeDir, 'sea-config.json'),
+      JSON.stringify({
+        main: path.join(probeDir, 'main.cjs'),
+        output: path.join(probeDir, 'probe.blob'),
+        disableExperimentalSEAWarning: true,
+      }),
+    );
+    const result = spawnSync(process.execPath, [
+      '--experimental-sea-config',
+      path.join(probeDir, 'sea-config.json'),
+    ], { encoding: 'utf8' });
+    if (result.status !== 0) {
+      const detail = `${(result.stderr || result.stdout || '').trim()} (exit ${result.status})`;
+      throw new Error(
+        `This system Node.js ${process.version} cannot build single-executable applications: ${detail}\n` +
+          'Run `npm run release:macos` (or `release:linux`) instead — it builds with the pinned official Node.js runtime, independent of the system Node.',
+      );
+    }
+  } finally {
+    await fs.rm(probeDir, { recursive: true, force: true });
+  }
 }
 
 async function buildSeaExecutable() {
